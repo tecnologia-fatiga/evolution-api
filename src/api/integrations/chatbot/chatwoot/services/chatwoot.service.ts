@@ -756,7 +756,27 @@ export class ChatwootService {
         if (inboxConversation) {
           if (this.provider.reopenConversation) {
             this.logger.verbose(`Found conversation in reopenConversation mode: ${JSON.stringify(inboxConversation)}`);
-            if (inboxConversation && this.provider.conversationPending && inboxConversation.status !== 'open') {
+            // Reabrir conversaciones resueltas o cerradas
+            if (
+              inboxConversation &&
+              (inboxConversation.status === 'resolved' || inboxConversation.status === 'closed')
+            ) {
+              await client.conversations.toggleStatus({
+                accountId: this.provider.accountId,
+                conversationId: inboxConversation.id,
+                data: {
+                  status: this.provider.conversationPending ? 'pending' : 'open',
+                },
+              });
+              this.logger.verbose(
+                `Reopened conversation ${inboxConversation.id} from ${inboxConversation.status} to ${this.provider.conversationPending ? 'pending' : 'open'}`,
+              );
+            } else if (
+              inboxConversation &&
+              this.provider.conversationPending &&
+              inboxConversation.status !== 'open' &&
+              inboxConversation.status !== 'pending'
+            ) {
               await client.conversations.toggleStatus({
                 accountId: this.provider.accountId,
                 conversationId: inboxConversation.id,
@@ -1253,11 +1273,14 @@ export class ChatwootService {
       if (
         this.provider.reopenConversation === false &&
         body.event === 'conversation_status_changed' &&
-        body.status === 'resolved' &&
+        (body.status === 'resolved' || body.status === 'closed') &&
         body.meta?.sender?.identifier
       ) {
         const keyToDelete = `${instance.instanceName}:createConversation-${body.meta.sender.identifier}`;
         this.cache.delete(keyToDelete);
+        this.logger.verbose(
+          `Deleted conversation cache for ${body.meta.sender.identifier} due to status change to ${body.status}`,
+        );
       }
 
       if (
